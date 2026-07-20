@@ -35,11 +35,22 @@ function hasPlantParam(){
 }
 
 // Pulls `?plant=` off the URL and sanitizes it. Falls back to
-// plant_01 if it's missing, empty, or turns out empty after
+// the_south_lawn if it's missing, empty, or turns out empty after
 // sanitizing (e.g. it was all stripped-out characters).
 function getActivePlantId(){
   const raw = new URLSearchParams(window.location.search).get('plant') || '';
-  return sanitizePlantId(raw) || 'plant_01';
+  return sanitizePlantId(raw) || 'the_south_lawn';
+}
+
+// Turns a stored plant_id (lowercase, underscores) into a display
+// name ("the_south_lawn" -> "The South Lawn"). Purely cosmetic —
+// the underlying id used for the database stays as-is.
+function prettifyPlantName(id){
+  return (id || '')
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 // Escapes text before it's inserted via innerHTML. plant_id ends up
