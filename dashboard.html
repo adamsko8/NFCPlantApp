@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#3c7a4c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="See how your plants are doing.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%233c7a4c' d='M12 2C12 2 5 10.5 5 15C5 18.866 8.13 22 12 22C15.87 22 19 18.866 19 15C19 10.5 12 2 12 2Z'/%3E%3C/svg%3E">
+<title>Dashboard &middot; Plant Tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+
+<div id="configBanner" class="config-banner" style="display:none;">
+  Supabase isn't configured yet — edit the keys at the top of config.js.
+</div>
+
+<nav class="topnav">
+  <a href="index.html">Log</a>
+  <a href="dashboard.html" class="active">Dashboard</a>
+</nav>
+
+<div class="dash-wrap">
+  <div class="dash-header">
+    <h1>Your plants</h1>
+    <p>Sorted by whoever's thirstiest.</p>
+    <button class="refresh-btn" id="refreshBtn" type="button" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 11A8 8 0 105.5 6.5M4 4v5h5M4 13a8 8 0 0014.5 4.5M20 20v-5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div id="dashContent" role="status" aria-live="polite">
+    <div class="loading-state">Loading plants&hellip;</div>
+  </div>
+
+  <div id="activitySection" style="display:none;">
+    <div class="section-title">Recent activity</div>
+    <div class="activity-list" id="activityList"></div>
+  </div>
+</div>
+
+<script>
+  const dashContent = document.getElementById('dashContent');
+  const activitySection = document.getElementById('activitySection');
+  const activityList = document.getElementById('activityList');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  const LEAF_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2C12 2 5 10.5 5 15C5 18.866 8.13401 22 12 22C15.866 22 19 18.866 19 15C19 10.5 12 2 12 2Z" fill="currentColor"/>
+    </svg>`;
+
+  function renderConfigWarning(){
+    document.getElementById('configBanner').style.display = 'block';
+    dashContent.innerHTML = `
+      <div class="empty-state">
+        Supabase isn't configured yet, so there's nothing to show. Edit config.js to connect a project.
+      </div>`;
+    activitySection.style.display = 'none';
+  }
+
+  function renderEmptyState(){
+    dashContent.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">${LEAF_ICON}</div>
+        <div>No waterings logged yet.<br>Tap a pot to get started.</div>
+      </div>`;
+  }
+
+  function renderErrorState(){
+    dashContent.innerHTML = `
+      <div class="empty-state">
+        Couldn't load your plants. Check your connection and refresh.
+      </div>`;
+  }
+
+  function renderPlants(plants){
+    dashContent.innerHTML = `<div class="plant-grid"></div>`;
+    const grid = dashContent.querySelector('.plant-grid');
+
+    for(const p of plants){
+      const card = document.createElement('div');
+      card.className = 'plant-card' + (p.overdue ? ' overdue' : '');
+
+      const metaText = p.overdue
+        ? `Needs water &middot; last watered ${formatRelativeTime(p.lastWatered)}`
+        : `Last watered ${formatRelativeTime(p.lastWatered)}`;
+
+      card.innerHTML = `
+        <div class="info">
+          <span class="name">${escapeHtml(p.plantId)}</span>
+          <span class="meta${p.overdue ? ' overdue-text' : ''}">${metaText}</span>
+        </div>
+        <div class="stats">
+          <div class="stat streak">
+            <span class="value">${p.streak}</span>
+            <span class="label">Streak</span>
+          </div>
+          <div class="stat">
+            <span class="value">${p.total}</span>
+            <span class="label">Total</span>
+          </div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+  }
+
+  function renderActivity(logs){
+    if(logs.length === 0){
+      activitySection.style.display = 'none';
+      return;
+    }
+    activitySection.style.display = 'block';
+    activityList.innerHTML = '';
+
+    for(const log of logs.slice(0, 8)){
+      const item = document.createElement('div');
+      item.className = 'activity-item';
+      item.innerHTML = `
+        <span class="who">${escapeHtml(log.plant_id)}</span>
+        <span class="when">${formatRelativeTime(log.created_at)}</span>
+      `;
+      activityList.appendChild(item);
+    }
+  }
+
+  async function loadDashboard(){
+    if(!isConfigured){
+      renderConfigWarning();
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('watering_logs')
+        .select('id, plant_id, created_at')
+        .order('created_at', { ascending: false });
+
+      if(error){
+        console.error('Supabase fetch error:', error);
+        renderErrorState();
+        return;
+      }
+
+      if(!data || data.length === 0){
+        renderEmptyState();
+        activitySection.style.display = 'none';
+        return;
+      }
+
+      const plants = summarizePlants(data);
+      renderPlants(plants);
+      renderActivity(data);
+    } catch(err){
+      console.error('Unexpected error loading dashboard:', err);
+      renderErrorState();
+    }
+  }
+
+  refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('spinning');
+    loadDashboard().finally(() => refreshBtn.classList.remove('spinning'));
+  });
+
+  loadDashboard();
+</script>
+
+</body>
+</html>
