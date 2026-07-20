@@ -238,14 +238,20 @@
       if(error){
         console.error('Supabase insert error:', error);
         setState('error');
+        setTimeout(() => {
+          setState('default');
+          busy = false;
+        }, 3000);
       } else {
         localStorage.setItem(LAST_PLANT_KEY, active_plant_id);
         setState('success');
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 1400);
       }
     } catch(err){
       console.error('Unexpected error logging watering:', err);
       setState('error');
-    } finally {
       setTimeout(() => {
         setState('default');
         busy = false;
