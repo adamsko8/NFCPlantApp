@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#3c7a4c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Tap to log that you watered this plant.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%233c7a4c' d='M12 2C12 2 5 10.5 5 15C5 18.866 8.13 22 12 22C15.87 22 19 18.866 19 15C19 10.5 12 2 12 2Z'/%3E%3C/svg%3E">
+<title>Plant Tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+
+<div id="configBanner" class="config-banner" style="display:none;">
+  Supabase isn't configured yet — edit the keys at the top of config.js.
+</div>
+
+<nav class="topnav">
+  <a href="index.html" class="active">Log</a>
+  <a href="dashboard.html">Dashboard</a>
+</nav>
+
+<div class="screen">
+  <div class="card">
+
+    <div id="pickerStep" style="display:none; width:100%;">
+      <div class="plant-label" style="margin-bottom:20px;">
+        <span class="eyebrow">No tag detected</span>
+        <span class="plant-name" style="font-size:16px;">Type a plant name to log manually</span>
+      </div>
+      <input type="text" id="plantInput" placeholder="e.g. fiddle leaf"
+        style="width:100%; max-width:280px; padding:12px 16px; border-radius:12px; border:1px solid var(--card-border); font-size:16px; text-align:center; margin-bottom:14px;">
+      <br>
+      <button id="startBtn" type="button"
+        style="background:var(--green-600); color:#fff; border:none; padding:10px 22px; border-radius:999px; font-size:14px; font-weight:600; cursor:pointer;">
+        Start watering
+      </button>
+    </div>
+
+    <div id="logStep" style="display:none; flex-direction:column; align-items:center; gap:28px;">
+      <div class="plant-label">
+        <span class="eyebrow">Now watering</span>
+        <span class="plant-name" id="plantName">plant_01</span>
+      </div>
+
+      <div class="btn-wrap">
+        <div class="pulse-ring" id="pulseRing"></div>
+        <button id="logBtn" type="button" aria-label="Log watering for this plant">
+          <span class="icon" id="btnIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2C12 2 5 10.5 5 15C5 18.866 8.13401 22 12 22C15.866 22 19 18.866 19 15C19 10.5 12 2 12 2Z" fill="#ffffff"/>
+            </svg>
+          </span>
+          <span id="btnLabel">Log watering</span>
+        </button>
+      </div>
+
+      <div class="status-text" id="statusText" role="status" aria-live="polite">&nbsp;</div>
+    </div>
+
+  </div>
+  <footer>NFC Plant Tracker &middot; MVP</footer>
+</div>
+
+<script>
+  if(!isConfigured){
+    document.getElementById('configBanner').style.display = 'block';
+  }
+
+  const pickerStep = document.getElementById('pickerStep');
+  const logStep = document.getElementById('logStep');
+  const plantInput = document.getElementById('plantInput');
+  const startBtn = document.getElementById('startBtn');
+  const plantNameEl = document.getElementById('plantName');
+
+  let active_plant_id = getActivePlantId();
+
+  function showLogStep(plantId){
+    active_plant_id = plantId;
+    plantNameEl.textContent = plantId;
+    pickerStep.style.display = 'none';
+    logStep.style.display = 'flex';
+  }
+
+  if(hasPlantParam()){
+    // Real NFC tap — skip straight to the button.
+    showLogStep(active_plant_id);
+  } else {
+    // Bare link with no tag info — ask for a name first.
+    pickerStep.style.display = 'block';
+    logStep.style.display = 'none';
+  }
+
+  startBtn.addEventListener('click', () => {
+    const typed = sanitizePlantId(plantInput.value);
+    if(!typed){
+      plantInput.focus();
+      plantInput.style.borderColor = '#b3392f';
+      return;
+    }
+    showLogStep(typed);
+  });
+
+  plantInput.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') startBtn.click();
+  });
+
+  const logBtn = document.getElementById('logBtn');
+  const btnIcon = document.getElementById('btnIcon');
+  const btnLabel = document.getElementById('btnLabel');
+  const statusText = document.getElementById('statusText');
+  const pulseRing = document.getElementById('pulseRing');
+
+  const DROP_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2C12 2 5 10.5 5 15C5 18.866 8.13401 22 12 22C15.866 22 19 18.866 19 15C19 10.5 12 2 12 2Z" fill="#ffffff"/>
+    </svg>`;
+
+  const SPINNER = `<div class="spinner"></div>`;
+
+  const CHECK_ICON = `
+    <svg class="checkmark" viewBox="0 0 52 52">
+      <circle cx="26" cy="26" r="23"/>
+      <path d="M14 27 L22 35 L38 17"/>
+    </svg>`;
+
+  const ERROR_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="6" y1="6" x2="18" y2="18" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+      <line x1="18" y1="6" x2="6" y2="18" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    </svg>`;
+
+  let busy = false;
+
+  function setState(state){
+    logBtn.classList.remove('loading', 'success', 'error');
+    if(state === 'loading'){
+      logBtn.classList.add('loading');
+      logBtn.disabled = true;
+      btnIcon.innerHTML = SPINNER;
+      btnLabel.textContent = 'Logging...';
+      statusText.textContent = '\u00A0';
+      statusText.className = 'status-text';
+    } else if(state === 'success'){
+      logBtn.classList.add('success');
+      btnIcon.innerHTML = CHECK_ICON;
+      btnLabel.textContent = 'Watered!';
+      statusText.textContent = 'Nice work \u2014 logged just now.';
+      statusText.className = 'status-text success';
+      pulseRing.classList.remove('active');
+      void pulseRing.offsetWidth;
+      pulseRing.classList.add('active');
+    } else if(state === 'error'){
+      logBtn.classList.add('error');
+      btnIcon.innerHTML = ERROR_ICON;
+      btnLabel.textContent = 'Try again';
+      statusText.textContent = 'Something went wrong. Please try again.';
+      statusText.className = 'status-text error';
+    } else {
+      btnIcon.innerHTML = DROP_ICON;
+      btnLabel.textContent = 'Log watering';
+      statusText.textContent = '\u00A0';
+      statusText.className = 'status-text';
+    }
+    logBtn.disabled = (state === 'loading');
+  }
+
+  async function logWatering(){
+    if(busy) return;
+
+    if(!isConfigured){
+      setState('error');
+      statusText.textContent = "Supabase isn't configured yet. See config.js.";
+      setTimeout(() => setState('default'), 3000);
+      return;
+    }
+
+    busy = true;
+    setState('loading');
+
+    try {
+      const { error } = await supabaseClient
+        .from('watering_logs')
+        .insert([{ plant_id: active_plant_id }]);
+
+      if(error){
+        console.error('Supabase insert error:', error);
+        setState('error');
+      } else {
+        setState('success');
+      }
+    } catch(err){
+      console.error('Unexpected error logging watering:', err);
+      setState('error');
+    } finally {
+      setTimeout(() => {
+        setState('default');
+        busy = false;
+      }, 3000);
+    }
+  }
+
+  logBtn.addEventListener('click', logWatering);
+
+  setState('default');
+</script>
+
+</body>
+</html>
