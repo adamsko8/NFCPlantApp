@@ -7,7 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Tap to log that you watered this plant.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%233c7a4c' d='M12 2C12 2 5 10.5 5 15C5 18.866 8.13 22 12 22C15.87 22 19 18.866 19 15C19 10.5 12 2 12 2Z'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon.png">
 <title>Plant Tracker</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -34,7 +35,7 @@
         <span class="plant-name" style="font-size:16px;">Pick a plant, or type a new one</span>
       </div>
       <div id="plantChips" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:16px;"></div>
-      <input type="text" id="plantInput" placeholder="e.g. fiddle leaf"
+      <input type="text" id="plantInput" placeholder="e.g. the south lawn"
         style="width:100%; max-width:280px; padding:12px 16px; border-radius:12px; border:1px solid var(--card-border); font-size:16px; text-align:center; margin-bottom:14px;">
       <br>
       <button id="startBtn" type="button"
@@ -46,7 +47,7 @@
     <div id="logStep" style="display:none; flex-direction:column; align-items:center; gap:28px;">
       <div class="plant-label">
         <span class="eyebrow">Now watering</span>
-        <span class="plant-name" id="plantName">plant_01</span>
+        <span class="plant-name" id="plantName">The South Lawn</span>
       </div>
 
       <div class="btn-wrap">
@@ -86,7 +87,7 @@
 
   function showLogStep(plantId){
     active_plant_id = plantId;
-    plantNameEl.textContent = plantId;
+    plantNameEl.textContent = prettifyPlantName(plantId);
     pickerStep.style.display = 'none';
     logStep.style.display = 'flex';
   }
@@ -121,7 +122,7 @@
       for(const name of names){
         const chip = document.createElement('button');
         chip.type = 'button';
-        chip.textContent = name;
+        chip.textContent = prettifyPlantName(name);
         chip.style.cssText = 'background:#fff; border:1px solid var(--card-border); color:var(--green-700); padding:8px 16px; border-radius:999px; font-size:14px; font-weight:600; cursor:pointer;';
         chip.addEventListener('click', () => showLogStep(name));
         plantChips.appendChild(chip);
