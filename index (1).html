@@ -31,8 +31,9 @@
     <div id="pickerStep" style="display:none; width:100%;">
       <div class="plant-label" style="margin-bottom:20px;">
         <span class="eyebrow">No tag detected</span>
-        <span class="plant-name" style="font-size:16px;">Type a plant name to log manually</span>
+        <span class="plant-name" style="font-size:16px;">Pick a plant, or type a new one</span>
       </div>
+      <div id="plantChips" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:16px;"></div>
       <input type="text" id="plantInput" placeholder="e.g. fiddle leaf"
         style="width:100%; max-width:280px; padding:12px 16px; border-radius:12px; border:1px solid var(--card-border); font-size:16px; text-align:center; margin-bottom:14px;">
       <br>
@@ -77,6 +78,9 @@
   const plantInput = document.getElementById('plantInput');
   const startBtn = document.getElementById('startBtn');
   const plantNameEl = document.getElementById('plantName');
+  const plantChips = document.getElementById('plantChips');
+
+  const LAST_PLANT_KEY = 'plantTracker.lastPlant';
 
   let active_plant_id = getActivePlantId();
 
@@ -87,6 +91,48 @@
     logStep.style.display = 'flex';
   }
 
+  // Renders tappable chips for plants you've logged before, so
+  // repeat visits don't require retyping a name. Falls back to
+  // localStorage's last-used plant if the database fetch fails or
+  // isn't configured yet, and pre-fills the text box either way.
+  async function loadQuickPicks(){
+    const lastPlant = localStorage.getItem(LAST_PLANT_KEY);
+    let names = [];
+
+    if(isConfigured){
+      try {
+        const { data, error } = await supabaseClient
+          .from('watering_logs')
+          .select('plant_id')
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if(!error && data){
+          names = [...new Set(data.map(r => r.plant_id))].slice(0, 8);
+        }
+      } catch(err){
+        console.error('Could not load past plants:', err);
+      }
+    }
+
+    if(names.length === 0){
+      plantChips.style.display = 'none';
+    } else {
+      plantChips.innerHTML = '';
+      for(const name of names){
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.textContent = name;
+        chip.style.cssText = 'background:#fff; border:1px solid var(--card-border); color:var(--green-700); padding:8px 16px; border-radius:999px; font-size:14px; font-weight:600; cursor:pointer;';
+        chip.addEventListener('click', () => showLogStep(name));
+        plantChips.appendChild(chip);
+      }
+    }
+
+    if(lastPlant && !plantInput.value){
+      plantInput.value = lastPlant;
+    }
+  }
+
   if(hasPlantParam()){
     // Real NFC tap — skip straight to the button.
     showLogStep(active_plant_id);
@@ -94,6 +140,7 @@
     // Bare link with no tag info — ask for a name first.
     pickerStep.style.display = 'block';
     logStep.style.display = 'none';
+    loadQuickPicks();
   }
 
   startBtn.addEventListener('click', () => {
@@ -192,6 +239,7 @@
         console.error('Supabase insert error:', error);
         setState('error');
       } else {
+        localStorage.setItem(LAST_PLANT_KEY, active_plant_id);
         setState('success');
       }
     } catch(err){
