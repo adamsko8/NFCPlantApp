@@ -310,6 +310,89 @@ footer{ margin-top:8px; font-size:12px; color:var(--text-muted); opacity:0.7; te
   font-weight:700;
   margin:32px 0 12px;
 }
+
+/* ---- Due for watering ---- */
+.due-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-bottom:8px;
+}
+.due-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:var(--amber-100);
+  border:1px solid var(--amber-600);
+  border-radius:14px;
+  padding:12px 16px;
+}
+.due-info{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.due-name{
+  font-weight:700;
+  font-size:15px;
+  color:var(--green-900);
+  word-break:break-word;
+}
+.due-meta{
+  font-size:12px;
+  color:var(--amber-600);
+  font-weight:600;
+}
+.water-now-btn{
+  flex-shrink:0;
+  background:var(--green-600);
+  color:var(--white);
+  text-decoration:none;
+  font-size:13px;
+  font-weight:700;
+  padding:9px 16px;
+  border-radius:999px;
+}
+.water-now-btn:hover{ background:var(--green-700); }
+
+/* ---- Heatmap ---- */
+.heatmap-card{
+  background:var(--white);
+  border:1px solid var(--card-border);
+  border-radius:16px;
+  padding:16px;
+  overflow-x:auto;
+}
+.heatmap-grid{
+  display:grid;
+  grid-template-rows:repeat(7, 14px);
+  grid-auto-flow:column;
+  grid-auto-columns:14px;
+  gap:3px;
+  justify-content:center;
+}
+.hm-cell{
+  width:14px;
+  height:14px;
+  border-radius:3px;
+  display:inline-block;
+}
+.hm-empty{ background:transparent; }
+.hm-0{ background:#e6ece1; }
+.hm-1{ background:#a9cfb2; }
+.hm-2{ background:#5f9e70; }
+.hm-3{ background:var(--green-700); }
+.heatmap-legend{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:5px;
+  margin-top:10px;
+  font-size:11px;
+  color:var(--text-muted);
+}
 .activity-list{
   display:flex;
   flex-direction:column;
