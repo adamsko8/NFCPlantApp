@@ -138,40 +138,31 @@ function summarizePlants(logs, intervals){
     const daysSince = daysBetween(lastWatered, now);
     const interval = intervals[plantId] || WATER_INTERVAL_DAYS;
 
-    // Unique days with a log, newest first.
-    const uniqueDays = [...new Set(dates.map(dayKey))];
+    // Unique days with a log, oldest first -- easiest direction to
+    // walk when checking whether each watering arrived "on time".
+    const uniqueDaysAsc = [...new Set(dates.map(dayKey))]
+      .map(k => {
+        const [y, m, d] = k.split('-').map(Number);
+        return new Date(y, m, d);
+      })
+      .sort((a, b) => a - b);
 
-    // Current streak: consecutive days ending today or yesterday.
-    let streak = 0;
-    if(daysSince <= 1){
-      let cursor = lastWatered;
-      for(let i = 0; i < uniqueDays.length; i++){
-        if(uniqueDays[i] === dayKey(cursor)){
-          streak++;
-          cursor = new Date(cursor.getTime() - 86400000);
-        } else {
-          break;
-        }
-      }
+    // A watering "keeps the streak" if it arrived within `interval`
+    // days of the previous one -- not literally the next calendar
+    // day. A plant watered every 7 days on schedule should show a
+    // real streak, not always 1.
+    let bestStreak = uniqueDaysAsc.length ? 1 : 0;
+    let run = uniqueDaysAsc.length ? 1 : 0;
+    for(let i = 1; i < uniqueDaysAsc.length; i++){
+      const gap = daysBetween(uniqueDaysAsc[i - 1], uniqueDaysAsc[i]);
+      run = (gap <= interval) ? run + 1 : 1;
+      if(run > bestStreak) bestStreak = run;
     }
 
-    // Best streak ever: longest consecutive-day run anywhere in history.
-    // uniqueDays is newest-first; walk it comparing adjacent day gaps.
-    let bestStreak = 0;
-    let run = 1;
-    const dayDates = uniqueDays.map(k => {
-      const [y, m, d] = k.split('-').map(Number);
-      return new Date(y, m, d);
-    });
-    for(let i = 1; i < dayDates.length; i++){
-      if(daysBetween(dayDates[i], dayDates[i - 1]) === 1){
-        run++;
-      } else {
-        if(run > bestStreak) bestStreak = run;
-        run = 1;
-      }
-    }
-    if(run > bestStreak) bestStreak = run;
+    // Current streak is that same run, but only if the plant isn't
+    // overdue right now -- being late today breaks the streak even
+    // if every past gap was on time.
+    let streak = (daysSince <= interval) ? run : 0;
     if(streak > bestStreak) bestStreak = streak;
 
     plants.push({
