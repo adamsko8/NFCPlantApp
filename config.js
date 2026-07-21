@@ -191,20 +191,26 @@ function summarizePlants(logs, intervals){
   return plants;
 }
 
-// Buckets all logs by calendar day for the last `numDays` days,
-// for the heatmap. Returns an array (oldest first) of
-// { date, count } covering every day in the window, zeros included.
-function buildDailyCounts(logs, numDays){
+// Buckets logs by calendar day across a window of full weeks (Sunday
+// through today), for the heatmap. The window always starts on a
+// Sunday -- only the final (current) week can be partial -- so there's
+// never an ambiguous partial leading column.
+function buildDailyCounts(logs, numWeeks){
   const counts = {};
   for(const log of logs){
     const k = dayKey(new Date(log.created_at));
     counts[k] = (counts[k] || 0) + 1;
   }
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const currentWeekSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
+  const windowStart = new Date(currentWeekSunday.getFullYear(), currentWeekSunday.getMonth(), currentWeekSunday.getDate() - (numWeeks - 1) * 7);
+
   const out = [];
-  const today = new Date();
-  for(let i = numDays - 1; i >= 0; i--){
-    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-    out.push({ date: d, count: counts[dayKey(d)] || 0 });
+  const cursor = new Date(windowStart);
+  while(cursor <= today){
+    out.push({ date: new Date(cursor), count: counts[dayKey(cursor)] || 0 });
+    cursor.setDate(cursor.getDate() + 1);
   }
   return out;
 }
