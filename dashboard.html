@@ -36,8 +36,28 @@
     </button>
   </div>
 
+  <div id="dueSection" style="display:none;">
+    <div class="section-title" style="margin-top:0;">Due for watering</div>
+    <div class="due-list" id="dueList"></div>
+  </div>
+
   <div id="dashContent" role="status" aria-live="polite">
     <div class="loading-state">Loading plants&hellip;</div>
+  </div>
+
+  <div id="heatmapSection" style="display:none;">
+    <div class="section-title">Last 12 weeks</div>
+    <div class="heatmap-card">
+      <div id="heatmapGrid" class="heatmap-grid"></div>
+      <div class="heatmap-legend">
+        <span>Less</span>
+        <span class="hm-cell hm-0"></span>
+        <span class="hm-cell hm-1"></span>
+        <span class="hm-cell hm-2"></span>
+        <span class="hm-cell hm-3"></span>
+        <span>More</span>
+      </div>
+    </div>
   </div>
 
   <div id="activitySection" style="display:none;">
@@ -51,6 +71,10 @@
   const activitySection = document.getElementById('activitySection');
   const activityList = document.getElementById('activityList');
   const refreshBtn = document.getElementById('refreshBtn');
+  const dueSection = document.getElementById('dueSection');
+  const dueList = document.getElementById('dueList');
+  const heatmapSection = document.getElementById('heatmapSection');
+  const heatmapGrid = document.getElementById('heatmapGrid');
 
   const LEAF_ICON = `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -63,6 +87,8 @@
       <div class="empty-state">
         Supabase isn't configured yet, so there's nothing to show. Edit config.js to connect a project.
       </div>`;
+    dueSection.style.display = 'none';
+    heatmapSection.style.display = 'none';
     activitySection.style.display = 'none';
   }
 
@@ -72,6 +98,8 @@
         <div class="icon">${LEAF_ICON}</div>
         <div>No waterings logged yet.<br>Tap a pot to get started.</div>
       </div>`;
+    dueSection.style.display = 'none';
+    heatmapSection.style.display = 'none';
   }
 
   function renderErrorState(){
@@ -79,6 +107,32 @@
       <div class="empty-state">
         Couldn't load your plants. Check your connection and refresh.
       </div>`;
+    dueSection.style.display = 'none';
+    heatmapSection.style.display = 'none';
+  }
+
+  // The due strip: overdue plants, most-overdue first, each with a
+  // one-tap "Water now" link straight to the log page for that plant.
+  function renderDue(plants){
+    const due = plants.filter(p => p.overdue);
+    if(due.length === 0){
+      dueSection.style.display = 'none';
+      return;
+    }
+    dueSection.style.display = 'block';
+    dueList.innerHTML = '';
+    for(const p of due){
+      const row = document.createElement('div');
+      row.className = 'due-item';
+      row.innerHTML = `
+        <div class="due-info">
+          <span class="due-name">${escapeHtml(prettifyPlantName(p.plantId))}</span>
+          <span class="due-meta">Last watered ${formatRelativeTime(p.lastWatered)} &middot; every ${p.interval} day${p.interval === 1 ? '' : 's'}</span>
+        </div>
+        <a class="water-now-btn" href="index.html?plant=${encodeURIComponent(p.plantId)}">Water now</a>
+      `;
+      dueList.appendChild(row);
+    }
   }
 
   function renderPlants(plants){
@@ -91,7 +145,7 @@
 
       const metaText = p.overdue
         ? `Needs water &middot; last watered ${formatRelativeTime(p.lastWatered)}`
-        : `Last watered ${formatRelativeTime(p.lastWatered)}`;
+        : `Last watered ${formatRelativeTime(p.lastWatered)} &middot; every ${p.interval}d`;
 
       card.innerHTML = `
         <div class="info">
@@ -104,12 +158,43 @@
             <span class="label">Streak</span>
           </div>
           <div class="stat">
+            <span class="value">${p.bestStreak}</span>
+            <span class="label">Best</span>
+          </div>
+          <div class="stat">
             <span class="value">${p.total}</span>
             <span class="label">Total</span>
           </div>
         </div>
       `;
       grid.appendChild(card);
+    }
+  }
+
+  // 12-week calendar heatmap, GitHub-contributions style: columns are
+  // weeks, rows are days of the week, color intensity = waterings.
+  function renderHeatmap(logs){
+    const days = buildDailyCounts(logs, 84);
+    heatmapSection.style.display = 'block';
+    heatmapGrid.innerHTML = '';
+
+    // Pad the start so the first column begins on Sunday.
+    const startPad = days[0].date.getDay();
+    for(let i = 0; i < startPad; i++){
+      const spacer = document.createElement('span');
+      spacer.className = 'hm-cell hm-empty';
+      heatmapGrid.appendChild(spacer);
+    }
+
+    for(const d of days){
+      const cell = document.createElement('span');
+      let level = 0;
+      if(d.count >= 3) level = 3;
+      else if(d.count === 2) level = 2;
+      else if(d.count === 1) level = 1;
+      cell.className = `hm-cell hm-${level}`;
+      cell.title = `${d.date.toLocaleDateString()} \u2014 ${d.count} watering${d.count === 1 ? '' : 's'}`;
+      heatmapGrid.appendChild(cell);
     }
   }
 
@@ -139,10 +224,16 @@
     }
 
     try {
-      const { data, error } = await supabaseClient
-        .from('watering_logs')
-        .select('id, plant_id, created_at')
-        .order('created_at', { ascending: false });
+      // Logs and per-plant intervals load in parallel.
+      const [logsResult, intervals] = await Promise.all([
+        supabaseClient
+          .from('watering_logs')
+          .select('id, plant_id, created_at')
+          .order('created_at', { ascending: false }),
+        fetchPlantIntervals()
+      ]);
+
+      const { data, error } = logsResult;
 
       if(error){
         console.error('Supabase fetch error:', error);
@@ -156,8 +247,10 @@
         return;
       }
 
-      const plants = summarizePlants(data);
+      const plants = summarizePlants(data, intervals);
+      renderDue(plants);
       renderPlants(plants);
+      renderHeatmap(data);
       renderActivity(data);
     } catch(err){
       console.error('Unexpected error loading dashboard:', err);
