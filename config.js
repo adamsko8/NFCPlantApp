@@ -93,9 +93,34 @@ function daysBetween(a, b){
   return Math.round((end - start) / msPerDay);
 }
 
+// Fetches per-plant watering intervals from the `plants` table.
+// Returns a map like { the_south_lawn: 2, monstera: 7 }. Plants
+// without a row fall back to WATER_INTERVAL_DAYS. Fails soft — an
+// empty map just means every plant uses the default.
+async function fetchPlantIntervals(){
+  const intervals = {};
+  if(!isConfigured) return intervals;
+  try {
+    const { data, error } = await supabaseClient
+      .from('plants')
+      .select('plant_id, interval_days');
+    if(!error && data){
+      for(const row of data){
+        if(row.interval_days > 0) intervals[row.plant_id] = row.interval_days;
+      }
+    }
+  } catch(err){
+    console.error('Could not load plant intervals:', err);
+  }
+  return intervals;
+}
+
 // Groups raw log rows by plant_id and computes stats for each plant:
-// last watered timestamp, days since, current streak, total waterings.
-function summarizePlants(logs){
+// last watered timestamp, days since, current streak, best streak,
+// total waterings, interval, and whether it's due. `intervals` is an
+// optional map of plant_id -> days from the plants table.
+function summarizePlants(logs, intervals){
+  intervals = intervals || {};
   const byPlant = {};
 
   for(const log of logs){
@@ -111,17 +136,17 @@ function summarizePlants(logs){
     const lastWatered = dates[0];
     const now = new Date();
     const daysSince = daysBetween(lastWatered, now);
+    const interval = intervals[plantId] || WATER_INTERVAL_DAYS;
 
-    // Streak: count consecutive unique days with a log, starting from
-    // today or yesterday (so it doesn't zero out just because today's
-    // watering hasn't happened yet).
+    // Unique days with a log, newest first.
     const uniqueDays = [...new Set(dates.map(dayKey))];
+
+    // Current streak: consecutive days ending today or yesterday.
     let streak = 0;
     if(daysSince <= 1){
       let cursor = lastWatered;
       for(let i = 0; i < uniqueDays.length; i++){
-        const expectedKey = dayKey(cursor);
-        if(uniqueDays[i] === expectedKey){
+        if(uniqueDays[i] === dayKey(cursor)){
           streak++;
           cursor = new Date(cursor.getTime() - 86400000);
         } else {
@@ -130,17 +155,56 @@ function summarizePlants(logs){
       }
     }
 
+    // Best streak ever: longest consecutive-day run anywhere in history.
+    // uniqueDays is newest-first; walk it comparing adjacent day gaps.
+    let bestStreak = 0;
+    let run = 1;
+    const dayDates = uniqueDays.map(k => {
+      const [y, m, d] = k.split('-').map(Number);
+      return new Date(y, m, d);
+    });
+    for(let i = 1; i < dayDates.length; i++){
+      if(daysBetween(dayDates[i], dayDates[i - 1]) === 1){
+        run++;
+      } else {
+        if(run > bestStreak) bestStreak = run;
+        run = 1;
+      }
+    }
+    if(run > bestStreak) bestStreak = run;
+    if(streak > bestStreak) bestStreak = streak;
+
     plants.push({
       plantId,
       lastWatered,
       daysSince,
       streak,
+      bestStreak,
       total: dates.length,
-      overdue: daysSince >= WATER_INTERVAL_DAYS
+      interval,
+      overdue: daysSince >= interval
     });
   }
 
   // Most overdue first — the actionable order for a dashboard.
   plants.sort((a, b) => b.daysSince - a.daysSince);
   return plants;
+}
+
+// Buckets all logs by calendar day for the last `numDays` days,
+// for the heatmap. Returns an array (oldest first) of
+// { date, count } covering every day in the window, zeros included.
+function buildDailyCounts(logs, numDays){
+  const counts = {};
+  for(const log of logs){
+    const k = dayKey(new Date(log.created_at));
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  const out = [];
+  const today = new Date();
+  for(let i = numDays - 1; i >= 0; i--){
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    out.push({ date: d, count: counts[dayKey(d)] || 0 });
+  }
+  return out;
 }
