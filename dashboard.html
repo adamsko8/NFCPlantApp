@@ -64,6 +64,17 @@
     <div class="section-title">Recent activity</div>
     <div class="activity-list" id="activityList"></div>
   </div>
+
+  <div class="section-title">Watering schedule</div>
+  <div class="schedule-card">
+    <div class="schedule-list" id="scheduleList"></div>
+    <div class="schedule-add">
+      <input type="text" id="newPlantName" placeholder="New plant name">
+      <input type="number" id="newPlantInterval" placeholder="Days" min="1" max="365" value="3">
+      <button id="addPlantBtn" type="button">Add</button>
+    </div>
+    <div class="schedule-status" id="scheduleStatus">&nbsp;</div>
+  </div>
 </div>
 
 <script>
@@ -75,6 +86,11 @@
   const dueList = document.getElementById('dueList');
   const heatmapSection = document.getElementById('heatmapSection');
   const heatmapGrid = document.getElementById('heatmapGrid');
+  const scheduleList = document.getElementById('scheduleList');
+  const scheduleStatus = document.getElementById('scheduleStatus');
+  const newPlantName = document.getElementById('newPlantName');
+  const newPlantInterval = document.getElementById('newPlantInterval');
+  const addPlantBtn = document.getElementById('addPlantBtn');
 
   const LEAF_ICON = `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -217,6 +233,105 @@
     }
   }
 
+  function showScheduleStatus(msg, isError){
+    scheduleStatus.textContent = msg;
+    scheduleStatus.style.color = isError ? '#b3392f' : 'var(--accent-check)';
+    setTimeout(() => { scheduleStatus.textContent = '\u00A0'; }, 2500);
+  }
+
+  async function saveInterval(plantId, days, btn){
+    if(!days || days < 1){
+      showScheduleStatus('Enter a number of days, 1 or more.', true);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const { error } = await supabaseClient
+        .from('plants')
+        .upsert({ plant_id: plantId, interval_days: days });
+      if(error){
+        console.error('Could not save interval:', error);
+        showScheduleStatus("Couldn't save. Try again.", true);
+      } else {
+        showScheduleStatus(`Saved \u2014 ${prettifyPlantName(plantId)} every ${days}d.`, false);
+      }
+    } catch(err){
+      console.error('Unexpected error saving interval:', err);
+      showScheduleStatus("Couldn't save. Try again.", true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    }
+  }
+
+  // Renders one row per known plant (anything logged, or already
+  // in the plants table) with an editable interval + save button.
+  function renderSchedule(plants, intervals){
+    const known = new Map();
+    for(const p of plants) known.set(p.plantId, p.interval);
+    for(const id in intervals) if(!known.has(id)) known.set(id, intervals[id]);
+
+    scheduleList.innerHTML = '';
+    if(known.size === 0){
+      scheduleList.innerHTML = '<div class="schedule-empty">No plants yet \u2014 add one below.</div>';
+      return;
+    }
+
+    const sortedIds = [...known.keys()].sort((a, b) => prettifyPlantName(a).localeCompare(prettifyPlantName(b)));
+
+    for(const plantId of sortedIds){
+      const row = document.createElement('div');
+      row.className = 'schedule-row';
+      row.innerHTML = `
+        <span class="schedule-name">${escapeHtml(prettifyPlantName(plantId))}</span>
+        <input type="number" class="schedule-input" min="1" max="365" value="${known.get(plantId)}">
+        <span class="schedule-unit">days</span>
+        <button type="button" class="schedule-save-btn">Save</button>
+      `;
+      const input = row.querySelector('.schedule-input');
+      const saveBtn = row.querySelector('.schedule-save-btn');
+      saveBtn.addEventListener('click', () => saveInterval(plantId, parseInt(input.value, 10), saveBtn));
+      scheduleList.appendChild(row);
+    }
+  }
+
+  addPlantBtn.addEventListener('click', async () => {
+    const plantId = sanitizePlantId(newPlantName.value);
+    const days = parseInt(newPlantInterval.value, 10);
+
+    if(!plantId){
+      showScheduleStatus('Enter a plant name.', true);
+      newPlantName.focus();
+      return;
+    }
+    if(!days || days < 1){
+      showScheduleStatus('Enter a number of days, 1 or more.', true);
+      return;
+    }
+
+    addPlantBtn.disabled = true;
+    try {
+      const { error } = await supabaseClient
+        .from('plants')
+        .upsert({ plant_id: plantId, interval_days: days });
+      if(error){
+        console.error('Could not add plant:', error);
+        showScheduleStatus("Couldn't add plant. Try again.", true);
+      } else {
+        showScheduleStatus(`Added ${prettifyPlantName(plantId)}.`, false);
+        newPlantName.value = '';
+        newPlantInterval.value = 3;
+        loadDashboard();
+      }
+    } catch(err){
+      console.error('Unexpected error adding plant:', err);
+      showScheduleStatus("Couldn't add plant. Try again.", true);
+    } finally {
+      addPlantBtn.disabled = false;
+    }
+  });
+
   async function loadDashboard(){
     if(!isConfigured){
       renderConfigWarning();
@@ -238,12 +353,14 @@
       if(error){
         console.error('Supabase fetch error:', error);
         renderErrorState();
+        renderSchedule([], intervals);
         return;
       }
 
       if(!data || data.length === 0){
         renderEmptyState();
         activitySection.style.display = 'none';
+        renderSchedule([], intervals);
         return;
       }
 
@@ -252,6 +369,7 @@
       renderPlants(plants);
       renderHeatmap(data);
       renderActivity(data);
+      renderSchedule(plants, intervals);
     } catch(err){
       console.error('Unexpected error loading dashboard:', err);
       renderErrorState();
