@@ -86,7 +86,6 @@
   const weatherNote = document.getElementById('weatherNote');
 
   const LAST_PLANT_KEY = 'plantTracker.lastPlant';
-  const WEATHER_LOC_KEY = 'plantTracker.location';
   const QUEUE_KEY = 'plantTracker.pendingQueue';
 
   let active_plant_id = getActivePlantId();
@@ -99,15 +98,13 @@
     loadWeather();
   }
 
-  // Weather nudge: fetches today's rainfall for the plant's location,
-  // so you know at a glance whether the sky already did the watering.
-  // Loads after the button is already interactive -- never blocks it,
-  // and fails completely silently (no permission prompt nag, no error
-  // shown) if geolocation is denied or the fetch fails.
-  function getSavedLocation(){
-    try { return JSON.parse(localStorage.getItem(WEATHER_LOC_KEY)); }
-    catch { return null; }
-  }
+  // Weather nudge: fetches today's rainfall for a fixed location
+  // (Mechanicsburg, PA), so you know at a glance whether the sky
+  // already did the watering. Loads after the button is already
+  // interactive -- never blocks it -- and fails silently if the
+  // fetch doesn't succeed.
+  const HOME_LAT = 40.2098;
+  const HOME_LON = -76.9981;
 
   async function fetchWeather(lat, lon){
     try {
@@ -126,21 +123,7 @@
   }
 
   function loadWeather(){
-    const saved = getSavedLocation();
-    if(saved){
-      fetchWeather(saved.lat, saved.lon);
-      return;
-    }
-    if(!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        localStorage.setItem(WEATHER_LOC_KEY, JSON.stringify(loc));
-        fetchWeather(loc.lat, loc.lon);
-      },
-      () => { /* denied or unavailable -- skip silently */ },
-      { timeout: 4000 }
-    );
+    fetchWeather(HOME_LAT, HOME_LON);
   }
 
   // Offline queue: if a log fails because there's no connection, save
