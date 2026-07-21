@@ -51,6 +51,8 @@
         <span class="plant-name" id="plantName">The South Lawn</span>
       </div>
 
+      <div class="weather-note" id="weatherNote" style="display:none; font-size:13px; color:var(--text-muted); margin-top:-8px; text-align:center; max-width:260px;"></div>
+
       <div class="btn-wrap">
         <div class="pulse-ring" id="pulseRing"></div>
         <button id="logBtn" type="button" aria-label="Log watering for this plant">
@@ -81,8 +83,11 @@
   const startBtn = document.getElementById('startBtn');
   const plantNameEl = document.getElementById('plantName');
   const plantChips = document.getElementById('plantChips');
+  const weatherNote = document.getElementById('weatherNote');
 
   const LAST_PLANT_KEY = 'plantTracker.lastPlant';
+  const WEATHER_LOC_KEY = 'plantTracker.location';
+  const QUEUE_KEY = 'plantTracker.pendingQueue';
 
   let active_plant_id = getActivePlantId();
 
@@ -91,7 +96,92 @@
     plantNameEl.textContent = prettifyPlantName(plantId);
     pickerStep.style.display = 'none';
     logStep.style.display = 'flex';
+    loadWeather();
   }
+
+  // Weather nudge: fetches today's rainfall for the plant's location,
+  // so you know at a glance whether the sky already did the watering.
+  // Loads after the button is already interactive -- never blocks it,
+  // and fails completely silently (no permission prompt nag, no error
+  // shown) if geolocation is denied or the fetch fails.
+  function getSavedLocation(){
+    try { return JSON.parse(localStorage.getItem(WEATHER_LOC_KEY)); }
+    catch { return null; }
+  }
+
+  async function fetchWeather(lat, lon){
+    try {
+      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum&timezone=auto`);
+      const data = await res.json();
+      const mm = data && data.daily && data.daily.precipitation_sum ? data.daily.precipitation_sum[0] : null;
+      if(mm == null) return;
+      const inches = mm * 0.0393701;
+      weatherNote.style.display = 'block';
+      weatherNote.textContent = inches >= 0.04
+        ? `${inches.toFixed(1)}in of rain today \u2014 maybe skip watering.`
+        : 'No rain today.';
+    } catch(err){
+      console.error('Weather fetch failed:', err);
+    }
+  }
+
+  function loadWeather(){
+    const saved = getSavedLocation();
+    if(saved){
+      fetchWeather(saved.lat, saved.lon);
+      return;
+    }
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        localStorage.setItem(WEATHER_LOC_KEY, JSON.stringify(loc));
+        fetchWeather(loc.lat, loc.lon);
+      },
+      () => { /* denied or unavailable -- skip silently */ },
+      { timeout: 4000 }
+    );
+  }
+
+  // Offline queue: if a log fails because there's no connection, save
+  // it locally instead of just erroring out. Flushed on page load and
+  // whenever the browser regains connectivity.
+  function getQueue(){
+    try { return JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; }
+    catch { return []; }
+  }
+
+  function saveQueue(q){
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+  }
+
+  function queueWatering(plantId){
+    const q = getQueue();
+    q.push({ plant_id: plantId, created_at: new Date().toISOString() });
+    saveQueue(q);
+  }
+
+  async function flushQueue(){
+    if(!isConfigured) return;
+    const q = getQueue();
+    if(q.length === 0) return;
+    const remaining = [];
+    for(const item of q){
+      try {
+        const { error } = await supabaseClient.from('watering_logs').insert([item]);
+        if(error) remaining.push(item);
+      } catch(err){
+        remaining.push(item);
+      }
+    }
+    saveQueue(remaining);
+    if(remaining.length < q.length){
+      console.log(`Synced ${q.length - remaining.length} queued watering(s).`);
+    }
+  }
+
+  flushQueue();
+  window.addEventListener('online', flushQueue);
 
   // Renders tappable chips for plants you've logged before, so
   // repeat visits don't require retyping a name. Falls back to
@@ -272,11 +362,23 @@
       }
     } catch(err){
       console.error('Unexpected error logging watering:', err);
-      setState('error');
-      setTimeout(() => {
-        setState('default');
-        busy = false;
-      }, 3000);
+      const isOffline = !navigator.onLine || err instanceof TypeError;
+      if(isOffline){
+        queueWatering(active_plant_id);
+        localStorage.setItem(LAST_PLANT_KEY, active_plant_id);
+        setState('success');
+        statusText.textContent = "Saved offline \u2014 will sync once you're back online.";
+        setTimeout(() => {
+          setState('default');
+          busy = false;
+        }, 2200);
+      } else {
+        setState('error');
+        setTimeout(() => {
+          setState('default');
+          busy = false;
+        }, 3000);
+      }
     }
   }
 
