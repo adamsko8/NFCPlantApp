@@ -24,6 +24,7 @@
 <nav class="topnav">
   <a href="index.html" class="active">Log</a>
   <a href="dashboard.html">Dashboard</a>
+  <a href="schedule.html">Schedule</a>
 </nav>
 
 <div class="screen">
@@ -102,14 +103,33 @@
 
     if(isConfigured){
       try {
-        const { data, error } = await supabaseClient
-          .from('watering_logs')
-          .select('plant_id')
-          .order('created_at', { ascending: false })
-          .limit(200);
-        if(!error && data){
-          names = [...new Set(data.map(r => r.plant_id))].slice(0, 8);
+        const [logsResult, plantsResult] = await Promise.all([
+          supabaseClient
+            .from('watering_logs')
+            .select('plant_id')
+            .order('created_at', { ascending: false })
+            .limit(200),
+          supabaseClient
+            .from('plants')
+            .select('plant_id')
+        ]);
+
+        const fromLogs = (!logsResult.error && logsResult.data)
+          ? logsResult.data.map(r => r.plant_id) : [];
+        const fromSchedule = (!plantsResult.error && plantsResult.data)
+          ? plantsResult.data.map(r => r.plant_id) : [];
+
+        // Logged plants first (most-recent order preserved), then any
+        // schedule-only plants that haven't been watered yet.
+        const seen = new Set();
+        names = [];
+        for(const id of [...fromLogs, ...fromSchedule]){
+          if(!seen.has(id)){
+            seen.add(id);
+            names.push(id);
+          }
         }
+        names = names.slice(0, 8);
       } catch(err){
         console.error('Could not load past plants:', err);
       }
