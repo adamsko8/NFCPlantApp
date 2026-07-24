@@ -66,6 +66,8 @@
       </div>
 
       <div class="status-text" id="statusText" role="status" aria-live="polite">&nbsp;</div>
+
+      <div class="fun-fact-note" id="funFactNote" style="font-size:12px; color:var(--text-muted); text-align:center; max-width:260px; font-style:italic; opacity:0.85;"></div>
     </div>
 
   </div>
@@ -84,6 +86,7 @@
   const plantNameEl = document.getElementById('plantName');
   const plantChips = document.getElementById('plantChips');
   const weatherNote = document.getElementById('weatherNote');
+  const funFactNote = document.getElementById('funFactNote');
 
   const LAST_PLANT_KEY = 'plantTracker.lastPlant';
   const QUEUE_KEY = 'plantTracker.pendingQueue';
@@ -96,6 +99,7 @@
     pickerStep.style.display = 'none';
     logStep.style.display = 'flex';
     loadWeather();
+    funFactNote.textContent = getRandomFunFact();
   }
 
   // Weather nudge: fetches today's rainfall for a fixed location
