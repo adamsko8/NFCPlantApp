@@ -18,6 +18,47 @@ const supabaseClient = isConfigured
   ? window.supabase.createClient(YOUR_SUPABASE_URL, YOUR_SUPABASE_ANON_KEY)
   : null;
 
+// A small curated set of plant facts -- hardcoded on purpose rather
+// than pulled from an API. No network dependency, no rate limits,
+// works even if you're offline, and never adds a delay before the
+// button is usable.
+const PLANT_FUN_FACTS = [
+  "Bananas are technically berries, but strawberries aren't.",
+  "Some bamboo species can grow up to 3 feet in a single day.",
+  "A single tree can absorb roughly 48 pounds of CO2 per year.",
+  "Sunflowers track the sun across the sky, a behavior called heliotropism.",
+  "The oldest known living tree is over 5,000 years old.",
+  "Peanuts aren't nuts -- they're legumes, related to beans and lentils.",
+  "Some plants, like the Venus flytrap, can count -- they only snap shut after two touches within 20 seconds.",
+  "Corpse flowers can grow over 10 feet tall and bloom only once every several years.",
+  "Carrots were originally purple before orange varieties became common.",
+  "Tomato plants release a scent when damaged that can trigger defenses in nearby tomato plants.",
+  "A quaking aspen grove can technically be a single organism, connected by one root system.",
+  "Rice is the staple food for over half the world's population.",
+  "The world's smallest flowering plant, watermeal, is smaller than a grain of rice.",
+  "Cacti can survive over two years without a single drop of water.",
+  "Some seeds can remain dormant for centuries and still germinate.",
+  "Ferns reproduce with spores instead of seeds or flowers.",
+  "Ivy doesn't damage healthy brick, but it can worsen cracks that already exist.",
+  "Mint plants spread so aggressively through runners that most gardeners grow them in pots.",
+  "The Amazon rainforest produces about 20% of the world's oxygen.",
+  "Orchids are one of the largest plant families, with over 25,000 species.",
+  "A mature oak tree can drop over 10,000 acorns in a single good year.",
+  "Basil releases more fragrance the more you pinch its leaves.",
+  "Bonsai isn't a species -- it's a technique that can be applied to almost any tree.",
+  "Some mosses can survive being completely dried out and rehydrate years later.",
+  "Coffee plants can live for over 100 years, though yields drop off much earlier.",
+  "Cucumbers are 96% water.",
+  "The saguaro cactus doesn't grow its first arm until it's around 75 years old.",
+  "Lavender's scent comes from oils that also naturally repel some insects.",
+  "Bromeliads, like pineapples, can absorb water and nutrients directly through their leaves.",
+  "A single mature maple tree can release around 200,000 seeds in its lifetime."
+];
+
+function getRandomFunFact(){
+  return PLANT_FUN_FACTS[Math.floor(Math.random() * PLANT_FUN_FACTS.length)];
+}
+
 // ---- Shared helpers ----
 
 // Sanitizes a plant name: lowercase, only letters/numbers/underscore/
