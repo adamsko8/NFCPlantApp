@@ -38,7 +38,7 @@
     </div>
     <div class="schedule-add">
       <input type="text" id="newPlantName" placeholder="New plant name">
-      <input type="number" id="newPlantInterval" placeholder="Days" min="1" max="365" value="3">
+      <select id="newPlantInterval"></select>
       <button id="addPlantBtn" type="button">Add</button>
     </div>
     <div class="schedule-status" id="scheduleStatus">&nbsp;</div>
@@ -51,6 +51,22 @@
   const newPlantName = document.getElementById('newPlantName');
   const newPlantInterval = document.getElementById('newPlantInterval');
   const addPlantBtn = document.getElementById('addPlantBtn');
+
+  // Common watering intervals, in days. If a plant's saved interval
+  // isn't one of these preset values, it's added to the list too so
+  // the dropdown never silently changes an existing value.
+  const INTERVAL_PRESETS = [1, 2, 3, 4, 5, 6, 7, 10, 14, 21, 30];
+
+  function buildIntervalOptions(selected){
+    const values = new Set(INTERVAL_PRESETS);
+    if(selected) values.add(selected);
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted
+      .map(d => `<option value="${d}" ${d === selected ? 'selected' : ''}>${d} day${d === 1 ? '' : 's'}</option>`)
+      .join('');
+  }
+
+  newPlantInterval.innerHTML = buildIntervalOptions(3);
 
   function showScheduleStatus(msg, isError){
     scheduleStatus.textContent = msg;
@@ -104,7 +120,7 @@
       row.className = 'schedule-row';
       row.innerHTML = `
         <span class="schedule-name">${escapeHtml(prettifyPlantName(plantId))}</span>
-        <input type="number" class="schedule-input" min="1" max="365" value="${known.get(plantId)}">
+        <select class="schedule-input">${buildIntervalOptions(known.get(plantId))}</select>
         <span class="schedule-unit">days</span>
         <button type="button" class="schedule-save-btn">Save</button>
       `;
@@ -140,7 +156,7 @@
       } else {
         showScheduleStatus(`Added ${prettifyPlantName(plantId)}.`, false);
         newPlantName.value = '';
-        newPlantInterval.value = 3;
+        newPlantInterval.innerHTML = buildIntervalOptions(3);
         loadSchedule();
       }
     } catch(err){
