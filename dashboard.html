@@ -47,6 +47,11 @@
     <div class="due-list" id="dueList"></div>
   </div>
 
+  <div id="recentSection" style="display:none;">
+    <div class="section-title">Recently watered</div>
+    <div class="recent-list" id="recentList"></div>
+  </div>
+
   <div id="dashContent" role="status" aria-live="polite">
     <div class="loading-state">Loading plants&hellip;</div>
   </div>
@@ -80,6 +85,8 @@
   const exportBtn = document.getElementById('exportBtn');
   const dueSection = document.getElementById('dueSection');
   const dueList = document.getElementById('dueList');
+  const recentSection = document.getElementById('recentSection');
+  const recentList = document.getElementById('recentList');
   const heatmapSection = document.getElementById('heatmapSection');
   const heatmapGrid = document.getElementById('heatmapGrid');
 
@@ -95,6 +102,7 @@
         Supabase isn't configured yet, so there's nothing to show. Edit config.js to connect a project.
       </div>`;
     dueSection.style.display = 'none';
+    recentSection.style.display = 'none';
     heatmapSection.style.display = 'none';
     activitySection.style.display = 'none';
   }
@@ -106,6 +114,7 @@
         <div>No waterings logged yet.<br>Tap a pot to get started.</div>
       </div>`;
     dueSection.style.display = 'none';
+    recentSection.style.display = 'none';
     heatmapSection.style.display = 'none';
   }
 
@@ -115,6 +124,7 @@
         Couldn't load your plants. Check your connection and refresh.
       </div>`;
     dueSection.style.display = 'none';
+    recentSection.style.display = 'none';
     heatmapSection.style.display = 'none';
   }
 
@@ -139,6 +149,33 @@
         <a class="water-now-btn" href="index.html?plant=${encodeURIComponent(p.plantId)}">Water now</a>
       `;
       dueList.appendChild(row);
+    }
+  }
+
+  // Recently watered: the flip side of the due list -- plants that
+  // were just taken care of, most recent first. Excludes anything
+  // that's overdue again already, so a plant doesn't confusingly
+  // show up in both lists at once.
+  function renderRecent(plants){
+    const recent = plants
+      .filter(p => !p.overdue)
+      .sort((a, b) => a.daysSince - b.daysSince)
+      .slice(0, 5);
+
+    if(recent.length === 0){
+      recentSection.style.display = 'none';
+      return;
+    }
+    recentSection.style.display = 'block';
+    recentList.innerHTML = '';
+    for(const p of recent){
+      const row = document.createElement('div');
+      row.className = 'recent-item';
+      row.innerHTML = `
+        <span class="recent-name">${escapeHtml(prettifyPlantName(p.plantId))}</span>
+        <span class="recent-meta">${formatRelativeTime(p.lastWatered)}</span>
+      `;
+      recentList.appendChild(row);
     }
   }
 
@@ -248,6 +285,7 @@
 
       const plants = summarizePlants(data, intervals);
       renderDue(plants);
+      renderRecent(plants);
       renderPlants(plants);
       renderHeatmap(data);
       renderActivity(data);
